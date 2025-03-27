@@ -1,15 +1,129 @@
-import numpy as np
 import torch
 from torch import nn
+import torch.nn.functional as F
+import torchvision
+from torchvision import datasets, transforms
+import numpy as np
 
-def create_model():
-    # your code here
-    # return model instance (None is just a placeholder)
+# Загружаем данные CIFAR-10
+train_data = datasets.CIFAR10(root="./cifar10_data", train=True, download=True, transform=transforms.ToTensor())
+test_data = datasets.CIFAR10(root="./cifar10_data", train=False, download=True, transform=transforms.ToTensor())
 
-    return None
+# Разделение на train и validation
+train_size = int(len(train_data) * 0.8)
+val_size = len(train_data) - train_size
+train_data, val_data = torch.utils.data.random_split(train_data, [train_size, val_size])
 
-def count_parameters(model):
-    # your code here
-    # return integer number (None is just a placeholder)
-    
-    return None
+train_loader = torch.utils.data.DataLoader(train_data, batch_size=64, shuffle=True)
+val_loader = torch.utils.data.DataLoader(val_data, batch_size=64, shuffle=False)
+test_loader = torch.utils.data.DataLoader(test_data, batch_size=64, shuffle=False)
+
+# Улучшенная модель
+class ConvNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        # Первый сверточный блок
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.pool1 = nn.MaxPool2d(kernel_size=2)
+
+        # Второй сверточный блок
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.pool2 = nn.MaxPool2d(kernel_size=2)
+
+        # Третий сверточный блок
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.pool3 = nn.MaxPool2d(kernel_size=2)
+
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(in_features=128 * 4 * 4, out_features=256)
+        self.dropout = nn.Dropout(0.5)
+        self.fc2 = nn.Linear(in_features=256, out_features=10)
+
+    def forward(self, x):
+        x = self.pool1(F.relu(self.bn1(self.conv1(x))))
+        x = self.pool2(F.relu(self.bn2(self.conv2(x))))
+        x = self.pool3(F.relu(self.bn3(self.conv3(x))))
+        x = self.flatten(x)
+        x = self.dropout(F.relu(self.fc1(x))) 
+        x = self.fc2(x)
+        return x
+
+# Функции обучения и оценки
+def evaluate(model, dataloader, loss_fn, device):
+    model.eval()
+    losses = []
+    num_correct = 0
+    num_elements = 0
+
+    with torch.no_grad():
+        for X_batch, y_batch in dataloader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+            logits = model(X_batch)
+            loss = loss_fn(logits, y_batch)
+            losses.append(loss.item())
+
+            y_pred = torch.argmax(logits, dim=1)
+            num_correct += torch.sum(y_pred == y_batch)
+            num_elements += len(y_batch)
+
+    accuracy = num_correct / num_elements
+    return accuracy.item(), np.mean(losses)
+
+def train(model, loss_fn, optimizer, train_loader, val_loader, device, n_epoch=10):
+    for epoch in range(n_epoch):
+        model.train()
+        running_losses = []
+        running_accuracies = []
+
+        for i, (X_batch, y_batch) in enumerate(train_loader):
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+            logits = model(X_batch)
+            loss = loss_fn(logits, y_batch)
+            running_losses.append(loss.item())
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            model_answers = torch.argmax(logits, dim=1)
+            train_accuracy = (model_answers == y_batch).float().mean().item()
+            running_accuracies.append(train_accuracy)
+
+            if (i+1) % 100 == 0:
+                print(f"Итерация {i+1}: loss={np.mean(running_losses)}, accuracy={np.mean(running_accuracies)}")
+
+        val_accuracy, val_loss = evaluate(model, val_loader, loss_fn, device)
+        print(f"Эпоха {epoch+1}: val loss={val_loss}, val accuracy={val_accuracy}")
+
+    return model
+
+# Обучение
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = ConvNet().to(device)
+
+loss_fn = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+# Запуск обучения
+model = train(model, loss_fn, optimizer, train_loader, val_loader, device, n_epoch=10)
+
+# Тестирование
+test_accuracy, _ = evaluate(model, test_loader, loss_fn, device)
+print(f'Accuracy на тесте: {test_accuracy}')
+
+# **Сохранение модели (исправленный вариант)**
+torch.save(model.state_dict(), "model.pth")
+
+# **Загрузка модели (исправленный вариант)**
+model = ConvNet().to(device)  # Создаем новую модель
+model.load_state_dict(torch.load("model.pth", map_location=device))  # Загружаем веса
+model.eval()  # Переводим в режим оценки
+
+# **Проверка работы загруженной модели**
+x = torch.randn((1, 3, 32, 32)).to(device)
+output = model(x)
+print("Выход модели после загрузки:", output)
