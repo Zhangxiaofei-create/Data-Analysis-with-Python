@@ -1,4 +1,3 @@
-
 import torch
 
 desktop_path = 'C:\\Users\\bellavista\\Desktop\\'
