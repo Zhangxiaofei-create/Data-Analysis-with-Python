@@ -1,40 +1,36 @@
 import torch
+import os
 
 desktop_path = 'C:\\Users\\bellavista\\Desktop\\'
 model_path = desktop_path + 'model_state_dict.pth'
 scripted_model_path = desktop_path + 'scripted_model.pth'
 
 try:
-    # 检查文件是否存在
-    import os
+    # 检查文件存在性
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found at {model_path}")
     if not os.path.exists(scripted_model_path):
         raise FileNotFoundError(f"Scripted model file not found at {scripted_model_path}")
 
-    # 加载普通模型（state_dict）
-    loaded_model = torch.load(model_path, map_location=torch.device('cpu'))
-    # 注意：这里假设loaded_model已经是完整的模型实例
-    # 如果只是state_dict，需要先创建模型架构再加载
-    loaded_model.eval()
+    # 加载普通模型（假设 model_path 是 state_dict）
+    model = YourModelClass()  # 需定义模型结构
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model.eval()
 
-    # 加载Scripted模型
+    # 加载 Scripted 模型
+    loaded_scripted_model = None
     try:
         loaded_scripted_model = torch.jit.load(scripted_model_path, map_location='cpu')
         loaded_scripted_model.eval()
     except RuntimeError as e:
-        print(f"Warning: Could not load scripted model - {e}")
-        loaded_scripted_model = None
+        print(f"Failed to load scripted model: {e}")
 
-    # 测试加载的模型
+    # 测试模型
     x = torch.randn((1, 3, 32, 32))
     with torch.no_grad():
-        out = loaded_model(x)
-        print("Loaded model output shape:", out.shape)
-
-        if loaded_scripted_model is not None:
-            out_scripted = loaded_scripted_model(x)
-            print("Scripted model output shape:", out_scripted.shape)
+        print("Loaded model output:", model(x).shape)
+        if loaded_scripted_model:
+            print("Scripted model output:", loaded_scripted_model(x).shape)
 
 except Exception as e:
-    print(f"Error loading model: {e}")
+    print(f"Error: {e}")
