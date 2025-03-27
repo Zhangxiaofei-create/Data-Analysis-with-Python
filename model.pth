@@ -1,21 +1,26 @@
-desktop_path = 'C:\Users\bellavista\Desktop' 
+
+import torch
+
+desktop_path = 'C:\\Users\\bellavista\\Desktop\\'
 model_path = desktop_path + 'model_state_dict.pth'
+scripted_model_path = desktop_path + 'scripted_model.pth'
 
-
-# Load the model
 try:
-    
-   Load scripted model
-    loaded_scripted_model = torch.jit.load("scripted_model.pth")
+    # 加载模型
+    loaded_model = torch.load(model_path, map_location=torch.device('cpu'))
+    loaded_model.eval()
+
+    # 加载 Scripted 模型
+    loaded_scripted_model = torch.jit.load(scripted_model_path)
     loaded_scripted_model.eval()
-    
-    # Test the loaded model
+
+    # 测试加载的模型
     x = torch.randn((1, 3, 32, 32))
     out = loaded_model(x)
     print("Loaded model output shape:", out.shape)
-    
+
     out_scripted = loaded_scripted_model(x)
     print("Scripted model output shape:", out_scripted.shape)
-    
+
 except Exception as e:
     print(f"Error loading model: {e}")
